@@ -78,7 +78,8 @@ function createGame($connection, $playerId, $opponentId)
                    
     $connection->query($sql);
     
-    $sql = "SELECT id from games where player1_id = ".$playerId." and player2_id = ".$opponentId;
+    $sql = "SELECT id from games where player1_id = ".$playerId." and player2_id = ".$opponentId.
+    " ORDER BY id DESC LIMIT 1";
                    
     $id = $connection->query($sql)->fetch(PDO::FETCH_NUM);
     
