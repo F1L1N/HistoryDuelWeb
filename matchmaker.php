@@ -3,10 +3,33 @@ header('Content-Type: application/json');
 if (isset($_POST['id']))
 {
     include('connect.php');
-    setSearchingStatus($connection, 0);
-    $opponentId = findOpponent($connection);  
-    setOpponentId($connection, $opponentId);
-    waitOpponent($connection, $opponentId);
+    if ($_POST['mode'] == 'connect')
+    {
+        setSearchingStatus($connection, 0);
+        $opponentId = findOpponent($connection);  
+        setOpponentId($connection, $opponentId);
+        waitOpponent($connection, $opponentId);
+    }
+    else
+    {
+        checkConnect($connection);        
+    }
+}
+
+function checkConnect($connection)
+{
+    $sql = "SELECT status, opponent_id from matchmaking 
+                    where player_id = ".$_POST['id'];
+    $matchInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+    if ($matchInfo[0] == '1')
+    {
+        $data = [ 'opponentId' => $matchInfo[1] ];
+    }
+    else
+    {
+        $data = [ 'opponentId' => 'none' ];
+    }
+    echo json_encode( $data );    
 }
 
 function setOpponentId($connection, $opponentId)
