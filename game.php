@@ -1,8 +1,9 @@
 <?php
 header('Content-Type: application/json');
+
 if (isset($_POST['mode']))
 {
-    include('connect.php');
+    include('connect.php'); 
     switch ($_POST['mode']) 
     {
         case 0:
@@ -14,7 +15,7 @@ if (isset($_POST['mode']))
             getQuestionByRandom($connection);
             break;
         case 2:
-            //оценка ответа игрокf
+            //оценка ответа игрока
             estimateAnswer($connection);
             break;
         case 3:
@@ -28,7 +29,15 @@ if (isset($_POST['mode']))
         case 5:
             //обновление данных об игре
             updateGame($connection);
-            break;    
+            break;  
+        case 6:
+            //занесение в бд текущего вопроса
+            setQuestionByHost($connection);
+            break;
+        case 7:
+            //запрос на завершение игры
+            closeGame($connection);
+            break;            
     }
 }
 
@@ -45,20 +54,37 @@ function getMatchID ($connection)
 
 function getQuestionByRandom($connection)
 {
-    $sql = "SELECT id from questions";
-    $questionsIds = $connection->query($sql)->fetch(PDO::FETCH_NUM);
-     
-    $sql = "SELECT * from questions where id = ".array_rand($opponentIds);
+    $sql = "select id from questions";
+    $questionsIds = $connection->query($sql)->fetchAll();
+    
+    $sql = "SELECT * from questions where id = ".$questionsIds[array_rand($questionsIds)]['id'];
     $question = $connection->query($sql)->fetch(PDO::FETCH_NUM);
     
-    $data = [ 'id' => $question[0], 
+    $data = ['id' => $question[0], 
              'question' => $question[1],
              'variant1' => $question[2],
              'variant2' => $question[3],
              'variant3' => $question[4],
              'variant4' => $question[5]];
-             
+     
     echo json_encode( $data );         
+}
+
+function setQuestionByHost($connection)
+{
+    $sql = "SELECT id from questions";
+    $questionsIds = $connection->query($sql)->fetchAll();
+    
+    $sql = "SELECT player1_id, questions from games where id = ".$_POST['gameId'];
+    $gameInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+    if ($gameInfo[0] == $_POST['id'])
+    {
+        $currentQuestionId = $questionsIds[array_rand($questionsIds)]['id'];
+        $sql = "UPDATE games".
+                " SET current = ".$currentQuestionId.", questions = '".$gameInfo[1]." ".$currentQuestionId.
+                "' WHERE id = ".$_POST['gameId'];    
+        $connection->query($sql);    
+    }
 }
 
 function estimateAnswer($connection)
