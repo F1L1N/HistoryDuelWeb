@@ -7,7 +7,7 @@ if (isset($_POST['mode']))
     switch ($_POST['mode']) 
     {
         case 0:
-            //добавление в БД записи об игре
+            //получение номера матча
             getMatchID($connection);
             break;
         case 1:
@@ -37,7 +37,11 @@ if (isset($_POST['mode']))
         case 7:
             //запрос на завершение игры
             closeGame($connection);
-            break;            
+            break;  
+        case 8:
+            //получение текущего запроса
+            getCurrentQuestion($connection);
+            break;
     }
 }
 
@@ -45,9 +49,9 @@ function getMatchID ($connection)
 {
     $sql = "SELECT matchID from matchmaking where player_id = ".$_POST['id'];
                    
-    $id = $connection->query($sql); 
+    $id = $connection->query($sql)->fetch(PDO::FETCH_NUM); 
     
-    $data = [ 'gameId' => $id];
+    $data = [ 'gameId' => $id[0]];
     
     echo json_encode( $data );  
 }
@@ -70,20 +74,73 @@ function getQuestionByRandom($connection)
     echo json_encode( $data );         
 }
 
+function getCurrentQuestion($connection)
+{
+    $sql = "select current from gameStatus where id = ".$_POST['gameId'];
+    $currentQuestionId = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+    
+    $sql = "SELECT * from questions where id = ".$currentQuestionId[0];
+    $question = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+    
+    $data = ['id' => $question[0], 
+             'question' => $question[1],
+             'variant1' => $question[2],
+             'variant2' => $question[3],
+             'variant3' => $question[4],
+             'variant4' => $question[5]];
+     
+    echo json_encode( $data );  
+}
+
 function setQuestionByHost($connection)
 {
     $sql = "SELECT id from questions";
     $questionsIds = $connection->query($sql)->fetchAll();
-    
     $sql = "SELECT player1_id, questions from games where id = ".$_POST['gameId'];
     $gameInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);
     if ($gameInfo[0] == $_POST['id'])
     {
         $currentQuestionId = $questionsIds[array_rand($questionsIds)]['id'];
         $sql = "UPDATE games".
-                " SET current = ".$currentQuestionId.", questions = '".$gameInfo[1]." ".$currentQuestionId.
-                "' WHERE id = ".$_POST['gameId'];    
-        $connection->query($sql);    
+                " SET questions = '".$gameInfo[1]." ".$currentQuestionId.
+                "' WHERE id = ".$_POST['gameId']; 
+        $connection->query($sql); 
+        $sql = "UPDATE gameStatus".
+                " SET current = ".$currentQuestionId.", player1_status = 0, player2_status = 0".
+                " WHERE id = ".$_POST['gameId'];  
+        $connection->query($sql);
+    }
+}
+
+function waitOpponent($connection, $gameId, $playerId)
+{
+    $sql = "SELECT player1_status, player2_status from gameStatus where id = ".$_POST['gameId'];
+    $gameStatus = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+    if ($gameStatus[0] == 0)
+    {
+        $sql = "UPDATE gameStatus SET player1_status = ".$playerId." WHERE id = ".$_POST['gameId'];
+        $connection->query($sql);
+    }
+    else
+    {
+        if ($gameStatus[1] == 0)
+        {
+            $sql = "UPDATE gameStatus SET player2_status = ".$playerId." WHERE id = ".$_POST['gameId'];
+            $connection->query($sql);
+        }
+    }
+    while(true)
+    {
+        $sql = "SELECT player1_status, player2_status from gameStatus where id = ".$gameId;
+        $check = $connection->query($sql)->fetch(PDO::FETCH_NUM);   
+        if (($check[0]!=0)&&($check[1]!=0))
+        {
+            break;
+        }
+        else
+        {
+            sleep(1);
+        }
     }
 }
 
@@ -91,21 +148,23 @@ function estimateAnswer($connection)
 {
     $sql = "SELECT right_variant from questions where id = ".$_POST['questionId'];
     $questionAnswer = $connection->query($sql)->fetch(PDO::FETCH_NUM);
-    updateMistake($connection, $_POST['id'], $questionAnswer[0] == $_POST['answer']); 
+    updateMistake($connection, $_POST['id'], $questionAnswer[0] == $_POST['answer'], $_POST['gameId']); 
+    checkMistake($connection);    
     
-    $data = [ 'estimation' => $answer];
+    waitOpponent($connection, $_POST['gameId'], $_POST['id']);
+    
+    $data = [ 'estimation' => $questionAnswer[0] == $_POST['answer']];
     echo json_encode( $data );  
-    
-    //checkMistake($connection);
 }
 
-function updateMistake($connection, $playerId, $answer)
+function updateMistake($connection, $playerId, $answer, $gameId)
 {
     if (!$answer)
     {
         $sql = "SELECT player1_id, player2_id, player1_mistakes, player2_mistakes
-                from games where id = ".$_POST['gameId'];
-        $playersInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);        
+                from games where id = ".$gameId;
+                    
+        $playersInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);   
         if ($playersInfo[0] == $playerId)
         {
             $playerMistakes = $playersInfo[2] + 1;
@@ -163,22 +222,29 @@ function sendTotalGame($connection)
 {
     $sql = "SELECT win from games where id = ".$_POST['gameId'];
     $gameInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM); 
-    if ($gameInfo[0] == $_POST['id'])
+    if ($gameInfo >= 0)
     {
-        $data = [ 'result' => 'WIN'];
-    }
-    else 
-    {
-        if ($gameInfo[0] == 0)
+        if ($gameInfo[0] == $_POST['id'])
         {
-            $data = [ 'result' => 'DRAW'];
+            $data = [ 'result' => 'WIN'];
         }
         else 
         {
-            $data = [ 'result' => 'LOSE'];
+            if ($gameInfo[0] == 0)
+            {
+                $data = [ 'result' => 'DRAW'];
+            }
+            else 
+            {
+                $data = [ 'result' => 'LOSE'];
+            }
         }
+        closeGame($connection);
     }
-    closeGame($connection);
+    else
+    {
+        $data = [ 'result' => 'NEXT'];
+    }
     echo json_encode( $data );   
 }
 

@@ -24,10 +24,14 @@ function checkConnect($connection)
     if ($matchInfo[0] == '1')
     {
         $data = [ 'opponentId' => $matchInfo[1] ];
+        $sql = "SELECT login from users where id = ".$matchInfo[1];
+        $opponentLogin = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+        
+        $data = [ 'opponentId' => $matchInfo[1], 'opponentLogin' => $opponentLogin[0] ];
     }
     else
     {
-        $data = [ 'opponentId' => 'none' ];
+        $data = [ 'opponentId' => 'none', 'opponentLogin' => 'none' ];
     }
     echo json_encode( $data );    
 }
@@ -55,6 +59,7 @@ function findOpponent($connection) : ?string
         $opponentId = $connection->query($sql)->fetch(PDO::FETCH_NUM);
         if ($opponentId)
         {
+            createGame($connection, $_POST['id'], $opponentId);
             return $opponentId[0];
         }
         else
@@ -83,12 +88,15 @@ function waitOpponent($connection, $opponentId)
                 SET status = 1, opponent_id = ".$opponentId."
                 WHERE player_id = ".$_POST['id'];
         $connection->query($sql);
-        $data = [ 'opponentId' => $opponentId ];
+        
+        $sql = "SELECT login from users where id = ".$opponentId;
+        $opponentLogin = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+        
+        $data = [ 'opponentId' => $opponentId, 'opponentLogin' => $opponentLogin[0] ];
         echo json_encode( $data );
     }
     else
     {
-        createGame($connection, $_POST['id'], $opponentId);
         sleep(1);
         waitOpponent($connection, $opponentId);
     }
@@ -116,5 +124,10 @@ function createGame($connection, $playerId, $opponentId)
             SET matchID = ".$id[0].
            " WHERE player_id = ".$opponentId;
             
+    $connection->query($sql);
+    
+    $sql = "INSERT INTO gameStatus (id, current, player1_status, player2_status) 
+                VALUES (".$id[0].", 0, ".$playerId.", ".$opponentId.")";
+                   
     $connection->query($sql);
 }
