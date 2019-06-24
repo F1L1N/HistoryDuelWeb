@@ -1,5 +1,6 @@
 <?php
 header('Content-Type: application/json');
+
 if (isset($_POST['id']))
 {
     include('connect.php');
@@ -18,21 +19,32 @@ if (isset($_POST['id']))
 
 function checkConnect($connection)
 {
-    $sql = "SELECT status, opponent_id from matchmaking 
+    $sql = "SELECT status, opponent_id, matchID from matchmaking 
                     where player_id = ".$_POST['id'];
     $matchInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);
     if ($matchInfo[0] == '1')
     {
-        $data = [ 'opponentId' => $matchInfo[1] ];
         $sql = "SELECT login from users where id = ".$matchInfo[1];
         $opponentLogin = $connection->query($sql)->fetch(PDO::FETCH_NUM);
         
-        $data = [ 'opponentId' => $matchInfo[1], 'opponentLogin' => $opponentLogin[0] ];
+        $sql = "SELECT player1_id,player2_id,player1_mistakes,player2_mistakes from games where id = ".$matchInfo[2];
+        $playersInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);
+        if ($playersInfo[0] == $_POST['id'])
+        {
+            $data = [ 'opponentId' => $matchInfo[1], 'opponentLogin' => $opponentLogin[0], 
+                      'playerMistakes' => $playersInfo[2], 'opponentMistakes' => $playersInfo[3]];
+        }
+        else
+        {
+            $data = [ 'opponentId' => $matchInfo[1], 'opponentLogin' => $opponentLogin[0], 
+                      'playerMistakes' => $playersInfo[3], 'opponentMistakes' => $playersInfo[2]];           
+        }
     }
     else
     {
-        $data = [ 'opponentId' => 'none', 'opponentLogin' => 'none' ];
-    }
+        $data = [ 'opponentId' => 'none', 'opponentLogin' => 'none', 
+                  'playerMistakes' => 'none', 'opponentMistakes' => 'none'];
+    }   
     echo json_encode( $data );    
 }
 
@@ -59,7 +71,6 @@ function findOpponent($connection) : ?string
         $opponentId = $connection->query($sql)->fetch(PDO::FETCH_NUM);
         if ($opponentId)
         {
-            createGame($connection, $_POST['id'], $opponentId);
             return $opponentId[0];
         }
         else
@@ -70,6 +81,7 @@ function findOpponent($connection) : ?string
             if ($opponentIds)
             {
                 $opponentId = $opponentIds[array_rand($opponentIds)]; 
+                createGame($connection, $_POST['id'], $opponentId);               
                 return $opponentId;
             }
             sleep(2);
@@ -104,8 +116,8 @@ function waitOpponent($connection, $opponentId)
 
 function createGame($connection, $playerId, $opponentId)
 {
-    $sql = "INSERT INTO games (player1_id, player2_id, win, player1_mistakes, player2_mistakes, questions, current) 
-                   VALUES (".$playerId.", ".$opponentId.", -1, 0, 0, '', 0)";
+    $sql = "INSERT INTO games (player1_id, player2_id, win, player1_mistakes, player2_mistakes, questions) 
+                   VALUES (".$playerId.", ".$opponentId.", -1, 0, 0, '')";
                    
     $connection->query($sql);
     
@@ -125,7 +137,7 @@ function createGame($connection, $playerId, $opponentId)
            " WHERE player_id = ".$opponentId;
             
     $connection->query($sql);
-    
+    ;
     $sql = "INSERT INTO gameStatus (id, current, player1_status, player2_status) 
                 VALUES (".$id[0].", 0, ".$playerId.", ".$opponentId.")";
                    

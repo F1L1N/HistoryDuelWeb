@@ -110,6 +110,10 @@ function setQuestionByHost($connection)
                 " WHERE id = ".$_POST['gameId'];  
         $connection->query($sql);
     }
+    else
+    {
+        sleep(1);
+    }
 }
 
 function waitOpponent($connection, $gameId, $playerId)
@@ -148,12 +152,25 @@ function estimateAnswer($connection)
 {
     $sql = "SELECT right_variant from questions where id = ".$_POST['questionId'];
     $questionAnswer = $connection->query($sql)->fetch(PDO::FETCH_NUM);
-    updateMistake($connection, $_POST['id'], $questionAnswer[0] == $_POST['answer'], $_POST['gameId']); 
+    updateMistake($connection, $_POST['id'], $questionAnswer[0] == $_POST['answer'], $_POST['gameId']);
+    
+    waitOpponent($connection, $_POST['gameId'], $_POST['id']);    
     checkMistake($connection);    
-    
-    waitOpponent($connection, $_POST['gameId'], $_POST['id']);
-    
-    $data = [ 'estimation' => $questionAnswer[0] == $_POST['answer']];
+
+    $sql = "SELECT player1_id, player2_id, player1_mistakes, player2_mistakes
+                from games where id = ".$_POST['gameId'];
+    $playersInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM);  
+    if ($playersInfo[0] == $_POST['id'])
+    {
+        $playerMistakes = $playersInfo[2];
+        $opponentMistakes = $playersInfo[3];
+    }
+    else
+    {
+        $playerMistakes = $playersInfo[3];
+        $opponentMistakes = $playersInfo[2];
+    }
+    $data = [ 'playerMistakes' => $playerMistakes, 'opponentMistakes' => $opponentMistakes];
     echo json_encode( $data );  
 }
 
@@ -189,31 +206,28 @@ function checkMistake($connection)
     $sql = "SELECT player1_id, player2_id, player1_mistakes, player2_mistakes
                 from games where id = ".$_POST['gameId'];
     $playersInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM); 
-    if ($playersInfo[2] == 5)
+    if (($playersInfo[2] == 5) and ($playersInfo[3] == 5))
     {
         $sql = "UPDATE games
-                SET win = ".$playersInfo[1]."
+                SET win = 0
                 WHERE id = ".$_POST['gameId'];
-        $connection->query($sql);        
+        $connection->query($sql);                  
     }
     else
     {
+        if ($playersInfo[2] == 5)
+        {
+            $sql = "UPDATE games
+                    SET win = ".$playersInfo[1]."
+                    WHERE id = ".$_POST['gameId'];
+            $connection->query($sql);        
+        }
         if ($playersInfo[3] == 5)
         {
             $sql = "UPDATE games
                     SET win = ".$playersInfo[0]."
                     WHERE id = ".$_POST['gameId'];
             $connection->query($sql);   
-        }
-        else
-        {
-            if (($playersInfo[2] == 5) and ($playersInfo[3] == 5))
-            {
-                $sql = "UPDATE games
-                        SET win = 0
-                        WHERE id = ".$_POST['gameId'];
-                $connection->query($sql);                  
-            }
         }
     }
 }
@@ -222,7 +236,7 @@ function sendTotalGame($connection)
 {
     $sql = "SELECT win from games where id = ".$_POST['gameId'];
     $gameInfo = $connection->query($sql)->fetch(PDO::FETCH_NUM); 
-    if ($gameInfo >= 0)
+    if ($gameInfo[0] >= 0)
     {
         if ($gameInfo[0] == $_POST['id'])
         {
