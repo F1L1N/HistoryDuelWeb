@@ -1,6 +1,0 @@
-Vagrantfile
-.vagrant/
-vendor/
-composer.lock
-build
-coverage
